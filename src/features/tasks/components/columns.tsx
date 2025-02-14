@@ -1,32 +1,31 @@
 import { ColumnDef } from '@tanstack/react-table'
-import { Badge } from '@/components/ui/badge'
-import { Checkbox } from '@/components/ui/checkbox'
-import { labels, priorities, statuses } from '../data/data'
+import { statuses, tags } from '../data/data'
 import { Task } from '../data/schema'
 import { DataTableColumnHeader } from './data-table-column-header'
 import { DataTableRowActions } from './data-table-row-actions'
+import { Link } from '@tanstack/react-router'
+import { IconListDetails } from '@tabler/icons-react'
+import { Button } from '@/components/ui/button'
 
 export const columns: ColumnDef<Task>[] = [
   {
-    id: 'select',
-    header: ({ table }) => (
-      <Checkbox
-        checked={
-          table.getIsAllPageRowsSelected() ||
-          (table.getIsSomePageRowsSelected() && 'indeterminate')
-        }
-        onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
-        aria-label='Select all'
-        className='translate-y-[2px]'
-      />
-    ),
+    id: 'actions',
+    header: () => <div className="w-[30px]" />,
     cell: ({ row }) => (
-      <Checkbox
-        checked={row.getIsSelected()}
-        onCheckedChange={(value) => row.toggleSelected(!!value)}
-        aria-label='Select row'
-        className='translate-y-[2px]'
-      />
+      <Link
+        to="/tasks/$jobId"
+        params={{ jobId: row.original.id }}
+        className="block w-[30px]"
+      >
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8"
+          title="View Companies"
+        >
+          <IconListDetails className="h-4 w-4" />
+        </Button>
+      </Link>
     ),
     enableSorting: false,
     enableHiding: false,
@@ -34,28 +33,74 @@ export const columns: ColumnDef<Task>[] = [
   {
     accessorKey: 'id',
     header: ({ column }) => (
-      <DataTableColumnHeader column={column} title='Task' />
+      <DataTableColumnHeader column={column} title='Job ID' />
     ),
-    cell: ({ row }) => <div className='w-[80px]'>{row.getValue('id')}</div>,
+    cell: ({ row }) => <div className='w-[300px]'>{row.getValue('id')}</div>,
+    enableSorting: false,
+    enableHiding: true,
+  },
+  {
+    accessorKey: 'name',
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title='Name' />
+    ),
+    cell: ({ row }) => (
+      <div className='w-[200px]'>
+        <Link
+          to="/tasks/$jobId"
+          params={{ jobId: row.original.id }}
+          className="text-blue-600 hover:underline"
+        >
+          {row.getValue('name')}
+        </Link>
+      </div>
+    ),
+    enableSorting: true,
+    enableHiding: false,
+  },
+  {
+    accessorKey: 'total_companies',
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title='Total' />
+    ),
+    cell: ({ row }) => <div className='w-[10px]'>{row.getValue('total_companies')}</div>,
     enableSorting: false,
     enableHiding: false,
   },
   {
-    accessorKey: 'title',
+    accessorKey: 'processed_companies',
     header: ({ column }) => (
-      <DataTableColumnHeader column={column} title='Title' />
+      <DataTableColumnHeader column={column} title='Processed' />
+    ),
+    cell: ({ row }) => <div className='w-[10px]'>{row.getValue('processed_companies')}</div>,
+    enableSorting: false,
+    enableHiding: false,
+  },
+  {
+    accessorKey: 'tag',
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title='Tag' />
     ),
     cell: ({ row }) => {
-      const label = labels.find((label) => label.value === row.original.label)
+      const tag = tags.find(
+        (tag) => tag.value === row.getValue('tag')
+      )
+
+      if (!tag) {
+        return <div className='w-[100px]'>-</div>
+      }
 
       return (
-        <div className='flex space-x-2'>
-          {label && <Badge variant='outline'>{label.label}</Badge>}
-          <span className='max-w-32 truncate font-medium sm:max-w-72 md:max-w-[31rem]'>
-            {row.getValue('title')}
-          </span>
+        <div className='flex w-[100px] items-center'>
+          {tag.icon && (
+            <tag.icon className='mr-2 h-4 w-4 text-muted-foreground' />
+          )}
+          <span>{tag.label}</span>
         </div>
       )
+    },
+    filterFn: (row, id, value) => {
+      return value.includes(row.getValue(id))
     },
   },
   {
@@ -86,31 +131,16 @@ export const columns: ColumnDef<Task>[] = [
     },
   },
   {
-    accessorKey: 'priority',
+    accessorKey: 'created_at',
     header: ({ column }) => (
-      <DataTableColumnHeader column={column} title='Priority' />
+      <DataTableColumnHeader column={column} title='Created At' />
     ),
     cell: ({ row }) => {
-      const priority = priorities.find(
-        (priority) => priority.value === row.getValue('priority')
-      )
-
-      if (!priority) {
-        return null
-      }
-
-      return (
-        <div className='flex items-center'>
-          {priority.icon && (
-            <priority.icon className='mr-2 h-4 w-4 text-muted-foreground' />
-          )}
-          <span>{priority.label}</span>
-        </div>
-      )
+      const date = new Date(row.getValue('created_at'))
+      return <div className='w-[80px]'>{date.toLocaleDateString()}</div>
     },
-    filterFn: (row, id, value) => {
-      return value.includes(row.getValue(id))
-    },
+    enableSorting: true,
+    enableHiding: false,
   },
   {
     id: 'actions',

@@ -2,11 +2,14 @@ import {
   IconArrowDown,
   IconArrowRight,
   IconArrowUp,
-  IconCircle,
+  // IconCircle,
   IconCircleCheck,
-  IconCircleX,
+  // IconCircleX,
   IconExclamationCircle,
   IconStopwatch,
+  IconSearch,
+  IconBuildingSkyscraper,
+  IconDatabase,
 } from '@tabler/icons-react'
 
 export const labels = [
@@ -26,30 +29,32 @@ export const labels = [
 
 export const statuses = [
   {
-    value: 'backlog',
-    label: 'Backlog',
-    icon: IconExclamationCircle,
-  },
-  {
-    value: 'todo',
-    label: 'Todo',
-    icon: IconCircle,
-  },
-  {
-    value: 'in progress',
-    label: 'In Progress',
+    value: 'processing',
+    label: 'Processing',
     icon: IconStopwatch,
   },
   {
-    value: 'done',
-    label: 'Done',
+    value: 'pending',
+    label: 'Pending',
+    icon: IconStopwatch,
+  },
+  {
+    value: 'completed',
+    label: 'Completed',
     icon: IconCircleCheck,
   },
   {
-    value: 'canceled',
-    label: 'Canceled',
-    icon: IconCircleX,
+    value: 'failed',
+    label: 'Failed',
+    icon: IconExclamationCircle,
   },
+  {
+    value: 'stalled',
+    label: 'Stalled',
+    icon: IconExclamationCircle,
+  },
+
+
 ]
 
 export const priorities = [
@@ -67,5 +72,23 @@ export const priorities = [
     label: 'High',
     value: 'high',
     icon: IconArrowUp,
+  },
+]
+
+export const tags = [
+  {
+    value: 'company_lookup',
+    label: 'Company Lookup',
+    icon: IconBuildingSkyscraper,
+  },
+  {
+    value: 'data_enrichment',
+    label: 'Data Enrichment',
+    icon: IconDatabase,
+  },
+  {
+    value: 'search_index',
+    label: 'Search Index',
+    icon: IconSearch,
   },
 ]

@@ -3,6 +3,8 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { toast } from '@/hooks/use-toast'
 import { Button } from '@/components/ui/button'
+import { io } from 'socket.io-client'
+import { useEffect, useRef } from 'react'
 import {
   Form,
   FormControl,
@@ -12,7 +14,13 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import {
   Sheet,
   SheetClose,
@@ -22,8 +30,10 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
-import { SelectDropdown } from '@/components/select-dropdown'
 import { Task } from '../data/schema'
+import { config } from '@/config/env'
+import { useQueryClient } from '@tanstack/react-query'
+
 
 interface Props {
   open: boolean
@@ -32,38 +42,184 @@ interface Props {
 }
 
 const formSchema = z.object({
-  title: z.string().min(1, 'Title is required.'),
-  status: z.string().min(1, 'Please select a status.'),
-  label: z.string().min(1, 'Please select a label.'),
-  priority: z.string().min(1, 'Please choose a priority.'),
+  jobType: z.string().min(1, 'Job type is required.'),
+  name: z.string().min(1, 'Name is required.'),
+  csvFile: z.instanceof(File).refine(
+    (file) => file.type === 'text/csv' || file.name.endsWith('.csv'),
+    {
+      message: 'File must be a CSV',
+    }
+  ),
 })
+
 type TasksForm = z.infer<typeof formSchema>
 
-export function TasksMutateDrawer({ open, onOpenChange, currentRow }: Props) {
-  const isUpdate = !!currentRow
-
+export function TasksMutateDrawer({ open, onOpenChange }: Props) {
+  const queryClient = useQueryClient()
   const form = useForm<TasksForm>({
     resolver: zodResolver(formSchema),
-    defaultValues: currentRow ?? {
-      title: '',
-      status: '',
-      label: '',
-      priority: '',
+    defaultValues: {
+      jobType: 'name-to-domain',
+      name: '',
     },
   })
 
-  const onSubmit = (data: TasksForm) => {
-    // do something with the form data
-    onOpenChange(false)
-    form.reset()
-    toast({
-      title: 'You submitted the following values:',
-      description: (
-        <pre className='mt-2 w-[340px] rounded-md bg-slate-950 p-4'>
-          <code className='text-white'>{JSON.stringify(data, null, 2)}</code>
-        </pre>
-      ),
+  // Create a ref for the socket connection
+  const socketRef = useRef<any>(null)
+
+  // Cleanup socket connection on unmount
+  useEffect(() => {
+    return () => {
+      if (socketRef.current) {
+        socketRef.current.disconnect()
+      }
+    }
+  }, [])
+
+  const subscribeToJob = (jobId: string) => {
+    // Initialize socket connection if not exists
+    if (!socketRef.current) {
+      socketRef.current = io(`${config.apiBaseUrl}`)
+    }
+
+
+    const socket = socketRef.current
+
+    // Subscribe to job updates
+    socket.emit('subscribe_to_job', jobId)
+
+    socket.on('job_progress', (data: { progress: number }) => {
+      console.log(`Progress: ${data.progress}%`)
+      toast({
+        title: 'Job Progress',
+        description: `${Math.round(data.progress)}%`,
+      })
     })
+
+    socket.on('pipeline_job_started', () => {
+      console.log("RAMI PIPELINE STARTED")
+    })
+
+    socket.on('job_completed', () => {
+      console.log('Job completed!')
+      toast({
+        title: 'Job Completed',
+        description: 'Your results are ready for download',
+      })
+      
+      // Open download in new tab
+      window.open(`/api/jobs/company-lookup/${jobId}/download`, '_blank')
+      
+      // Cleanup socket subscription
+      unsubscribeFromJob(jobId)
+    })
+
+    socket.on('job_failed', (data: { error: string }) => {
+      console.error('Job failed:', data.error)
+      toast({
+        title: 'Job Failed',
+        description: data.error,
+        variant: 'destructive',
+      })
+      
+      // Cleanup socket subscription
+      unsubscribeFromJob(jobId)
+    })
+  }
+
+  const unsubscribeFromJob = (jobId: string) => {
+    if (socketRef.current) {
+      socketRef.current.emit('unsubscribe_from_job', jobId)
+      socketRef.current.disconnect()
+      socketRef.current = null
+    }
+  }
+
+  const onSubmit = async (data: TasksForm) => {
+    try {
+      const reader = new FileReader()
+      reader.onload = async (e) => {
+        const text = e.target?.result as string
+        // Parse CSV content and extract company names
+        const lines = text.split('\n')
+        // Remove header and empty lines, and trim whitespace
+        const companyNames = lines
+          .slice(1) // Skip the header row
+          .map(line => line.trim())
+          .filter(line => line.length > 0) // Remove empty lines
+
+        console.log('Company names:', companyNames)
+        console.log('Job type:', data.jobType)
+        console.log('Number of companies:', companyNames.length)
+
+        // Make POST request to API
+        try {
+          const response = await fetch(`${config.apiBaseUrl}/api/jobs/company-lookup`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              companies: companyNames,
+              name: data.name
+            }),
+          })
+
+          if (!response.ok) {
+            throw new Error(`API request failed with status ${response.status}`)
+          }
+
+          const result = await response.json()
+          console.log('API Response:', result)
+
+          // Subscribe to job updates via WebSocket
+          if (result.jobId) {
+            subscribeToJob(result.jobId)
+            // Invalidate the tasks query to trigger a refetch
+            queryClient.invalidateQueries({ queryKey: ['tasks'] })
+          }
+
+          toast({
+            title: 'Job submitted successfully',
+            description: (
+              <pre className='mt-2 w-[340px] rounded-md bg-slate-950 p-4'>
+                <code className='text-white'>
+                  {JSON.stringify(
+                    {
+                      fileName: data.csvFile.name,
+                      jobType: data.jobType,
+                      numberOfCompanies: companyNames.length,
+                      companies: companyNames.slice(0, 3), // Show first 3 companies in toast
+                      jobId: result.jobId
+                    },
+                    null,
+                    2
+                  )}
+                </code>
+              </pre>
+            ),
+          })
+        } catch (apiError) {
+          console.error('API Error:', apiError)
+          toast({
+            title: 'Error',
+            description: 'Failed to submit job to the server',
+            variant: 'destructive',
+          })
+          return
+        }
+      }
+
+      reader.readAsText(data.csvFile)
+      onOpenChange(false)
+      form.reset()
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to process the CSV file',
+        variant: 'destructive',
+      })
+    }
   }
 
   return (
@@ -76,12 +232,9 @@ export function TasksMutateDrawer({ open, onOpenChange, currentRow }: Props) {
     >
       <SheetContent className='flex flex-col'>
         <SheetHeader className='text-left'>
-          <SheetTitle>{isUpdate ? 'Update' : 'Create'} Task</SheetTitle>
+          <SheetTitle>Upload Companies</SheetTitle>
           <SheetDescription>
-            {isUpdate
-              ? 'Update the task by providing necessary info.'
-              : 'Add a new task by providing necessary info.'}
-            Click save when you&apos;re done.
+            Upload a CSV file containing the list of companies.
           </SheetDescription>
         </SheetHeader>
         <Form {...form}>
@@ -92,108 +245,58 @@ export function TasksMutateDrawer({ open, onOpenChange, currentRow }: Props) {
           >
             <FormField
               control={form.control}
-              name='title'
+              name='name'
               render={({ field }) => (
-                <FormItem className='space-y-1'>
-                  <FormLabel>Title</FormLabel>
+                <FormItem>
+                  <FormLabel>Job Name</FormLabel>
                   <FormControl>
-                    <Input {...field} placeholder='Enter a title' />
+                    <Input placeholder="Enter job name" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
+
             <FormField
               control={form.control}
-              name='status'
+              name='jobType'
               render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Job Type</FormLabel>
+                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a job type" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="name-to-domain">Name to Domain</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name='csvFile'
+              render={({ field: { onChange, value, ...field } }) => (
                 <FormItem className='space-y-1'>
-                  <FormLabel>Status</FormLabel>
-                  <SelectDropdown
-                    defaultValue={field.value}
-                    onValueChange={field.onChange}
-                    placeholder='Select dropdown'
-                    items={[
-                      { label: 'In Progress', value: 'in progress' },
-                      { label: 'Backlog', value: 'backlog' },
-                      { label: 'Todo', value: 'todo' },
-                      { label: 'Canceled', value: 'canceled' },
-                      { label: 'Done', value: 'done' },
-                    ]}
-                  />
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name='label'
-              render={({ field }) => (
-                <FormItem className='space-y-3 relative'>
-                  <FormLabel>Label</FormLabel>
+                  <FormLabel>Upload CSV File</FormLabel>
                   <FormControl>
-                    <RadioGroup
-                      onValueChange={field.onChange}
-                      defaultValue={field.value}
-                      className='flex flex-col space-y-1'
-                    >
-                      <FormItem className='flex items-center space-x-3 space-y-0'>
-                        <FormControl>
-                          <RadioGroupItem value='documentation' />
-                        </FormControl>
-                        <FormLabel className='font-normal'>
-                          Documentation
-                        </FormLabel>
-                      </FormItem>
-                      <FormItem className='flex items-center space-x-3 space-y-0'>
-                        <FormControl>
-                          <RadioGroupItem value='feature' />
-                        </FormControl>
-                        <FormLabel className='font-normal'>Feature</FormLabel>
-                      </FormItem>
-                      <FormItem className='flex items-center space-x-3 space-y-0'>
-                        <FormControl>
-                          <RadioGroupItem value='bug' />
-                        </FormControl>
-                        <FormLabel className='font-normal'>Bug</FormLabel>
-                      </FormItem>
-                    </RadioGroup>
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name='priority'
-              render={({ field }) => (
-                <FormItem className='space-y-3 relative'>
-                  <FormLabel>Priority</FormLabel>
-                  <FormControl>
-                    <RadioGroup
-                      onValueChange={field.onChange}
-                      defaultValue={field.value}
-                      className='flex flex-col space-y-1'
-                    >
-                      <FormItem className='flex items-center space-x-3 space-y-0'>
-                        <FormControl>
-                          <RadioGroupItem value='high' />
-                        </FormControl>
-                        <FormLabel className='font-normal'>High</FormLabel>
-                      </FormItem>
-                      <FormItem className='flex items-center space-x-3 space-y-0'>
-                        <FormControl>
-                          <RadioGroupItem value='medium' />
-                        </FormControl>
-                        <FormLabel className='font-normal'>Medium</FormLabel>
-                      </FormItem>
-                      <FormItem className='flex items-center space-x-3 space-y-0'>
-                        <FormControl>
-                          <RadioGroupItem value='low' />
-                        </FormControl>
-                        <FormLabel className='font-normal'>Low</FormLabel>
-                      </FormItem>
-                    </RadioGroup>
+                    <Input
+                      type='file'
+                      accept='.csv'
+                      onChange={(e) => {
+                        const file = e.target.files?.[0]
+                        if (file) {
+                          onChange(file)
+                        }
+                      }}
+                      required
+                      {...field}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -206,7 +309,7 @@ export function TasksMutateDrawer({ open, onOpenChange, currentRow }: Props) {
             <Button variant='outline'>Close</Button>
           </SheetClose>
           <Button form='tasks-form' type='submit'>
-            Save changes
+            Upload
           </Button>
         </SheetFooter>
       </SheetContent>

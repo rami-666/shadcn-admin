@@ -1,23 +1,17 @@
-import { HTMLAttributes, useState } from 'react'
+import { HTMLAttributes, useState, useEffect } from 'react'
 import { z } from 'zod'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Link } from '@tanstack/react-router'
-import { IconBrandFacebook, IconBrandGithub } from '@tabler/icons-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@/components/ui/form'
-import { Input } from '@/components/ui/input'
-import { PasswordInput } from '@/components/password-input'
+import { Form } from '@/components/ui/form'
+import { toast } from 'sonner'
+import { config } from '@/config/env'
 
-type UserAuthFormProps = HTMLAttributes<HTMLDivElement>
+
+interface UserAuthFormProps extends HTMLAttributes<HTMLDivElement> {
+  message?: string | null
+}
 
 const formSchema = z.object({
   email: z
@@ -34,7 +28,7 @@ const formSchema = z.object({
     }),
 })
 
-export function UserAuthForm({ className, ...props }: UserAuthFormProps) {
+export function UserAuthForm({ className, message, ...props }: UserAuthFormProps) {
   const [isLoading, setIsLoading] = useState(false)
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -44,6 +38,13 @@ export function UserAuthForm({ className, ...props }: UserAuthFormProps) {
       password: '',
     },
   })
+
+  // Show message toast on mount if exists
+  useEffect(() => {
+    if (message) {
+      toast(message)
+    }
+  }, [message])
 
   function onSubmit(data: z.infer<typeof formSchema>) {
     setIsLoading(true)
@@ -60,71 +61,21 @@ export function UserAuthForm({ className, ...props }: UserAuthFormProps) {
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)}>
           <div className='grid gap-2'>
-            <FormField
-              control={form.control}
-              name='email'
-              render={({ field }) => (
-                <FormItem className='space-y-1'>
-                  <FormLabel>Email</FormLabel>
-                  <FormControl>
-                    <Input placeholder='name@example.com' {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name='password'
-              render={({ field }) => (
-                <FormItem className='space-y-1'>
-                  <div className='flex items-center justify-between'>
-                    <FormLabel>Password</FormLabel>
-                    <Link
-                      to='/forgot-password'
-                      className='text-sm font-medium text-muted-foreground hover:opacity-75'
-                    >
-                      Forgot password?
-                    </Link>
-                  </div>
-                  <FormControl>
-                    <PasswordInput placeholder='********' {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <Button className='mt-2' disabled={isLoading}>
-              Login
-            </Button>
-
-            <div className='relative my-2'>
-              <div className='absolute inset-0 flex items-center'>
-                <span className='w-full border-t' />
-              </div>
-              <div className='relative flex justify-center text-xs uppercase'>
-                <span className='bg-background px-2 text-muted-foreground'>
-                  Or continue with
-                </span>
-              </div>
-            </div>
-
             <div className='flex items-center gap-2'>
               <Button
                 variant='outline'
-                className='w-full'
+                className='w-3/4 mx-auto h-12' 
                 type='button'
                 disabled={isLoading}
+                onClick={() => window.location.href = `${config.apiBaseUrl}/auth/login`}
               >
-                <IconBrandGithub className='h-4 w-4' /> GitHub
-              </Button>
-              <Button
-                variant='outline'
-                className='w-full'
-                type='button'
-                disabled={isLoading}
-              >
-                <IconBrandFacebook className='h-4 w-4' /> Facebook
+                <svg xmlns="http://www.w3.org/2000/svg" width="21" height="21" viewBox="0 0 21 21" className="shrink-0">
+                  <path fill="#F25022" d="M1 1h9v9H1z" />
+                  <path fill="#00A4EF" d="M1 11h9v9H1z" />
+                  <path fill="#7FBA00" d="M11 1h9v9h-9z" />
+                  <path fill="#FFB900" d="M11 11h9v9h-9z" />
+                </svg>
+                Sign in with Microsoft
               </Button>
             </div>
           </div>

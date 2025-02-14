@@ -1,23 +1,24 @@
 import { DotsHorizontalIcon } from '@radix-ui/react-icons'
 import { Row } from '@tanstack/react-table'
-import { IconTrash } from '@tabler/icons-react'
+import { IconTrash, IconDownload } from '@tabler/icons-react'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuSeparator,
+  // DropdownMenuRadioGroup,
+  // DropdownMenuRadioItem,
+  // DropdownMenuSeparator,
   DropdownMenuShortcut,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
+  // DropdownMenuSub,
+  // DropdownMenuSubContent,
+  // DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useTasks } from '../context/tasks-context'
-import { labels } from '../data/data'
+// import { labels } from '../data/data'
 import { taskSchema } from '../data/schema'
+import { config } from '@/config/env'
 
 interface DataTableRowActionsProps<TData> {
   row: Row<TData>
@@ -29,6 +30,10 @@ export function DataTableRowActions<TData>({
   const task = taskSchema.parse(row.original)
 
   const { setOpen, setCurrentRow } = useTasks()
+
+  const handleDownload = () => {
+    window.open(`${config.apiBaseUrl}/api/jobs/company-lookup/${task.id}/download`, '_blank')
+  }
 
   return (
     <DropdownMenu modal={false}>
@@ -42,15 +47,21 @@ export function DataTableRowActions<TData>({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align='end' className='w-[160px]'>
-        <DropdownMenuItem
+        {/* <DropdownMenuItem
           onClick={() => {
             setCurrentRow(task)
             setOpen('update')
           }}
         >
           Edit
+        </DropdownMenuItem> */}
+        <DropdownMenuItem onClick={handleDownload}>
+          Download
+          <DropdownMenuShortcut>
+            <IconDownload size={16} />
+          </DropdownMenuShortcut>
         </DropdownMenuItem>
-        <DropdownMenuItem disabled>Make a copy</DropdownMenuItem>
+        {/* <DropdownMenuItem disabled>Make a copy</DropdownMenuItem>
         <DropdownMenuItem disabled>Favorite</DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuSub>
@@ -64,13 +75,14 @@ export function DataTableRowActions<TData>({
               ))}
             </DropdownMenuRadioGroup>
           </DropdownMenuSubContent>
-        </DropdownMenuSub>
-        <DropdownMenuSeparator />
+        </DropdownMenuSub> */}
+        {/* <DropdownMenuSeparator /> */}
         <DropdownMenuItem
           onClick={() => {
             setCurrentRow(task)
             setOpen('delete')
           }}
+          className="text-red-600"
         >
           Delete
           <DropdownMenuShortcut>

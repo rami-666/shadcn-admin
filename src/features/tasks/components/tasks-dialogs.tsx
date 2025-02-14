@@ -3,9 +3,46 @@ import { ConfirmDialog } from '@/components/confirm-dialog'
 import { useTasks } from '../context/tasks-context'
 import { TasksImportDialog } from './tasks-import-dialog'
 import { TasksMutateDrawer } from './tasks-mutate-drawer'
+import { config } from '@/config/env'
 
 export function TasksDialogs() {
   const { open, setOpen, currentRow, setCurrentRow } = useTasks()
+
+  const handleDelete = async () => {
+    if (!currentRow) return
+
+    try {
+      const response = await fetch(`${config.apiBaseUrl}/api/jobs/company-lookup/${currentRow.id}`, {
+        method: 'DELETE',
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to delete job')
+      }
+
+      toast({
+        title: 'Success',
+        description: 'Job deleted successfully',
+      })
+
+      // Close the dialog and reset state
+      setOpen(null)
+      setTimeout(() => {
+        setCurrentRow(null)
+      }, 500)
+
+      // Refresh the page to update the table
+      window.location.reload()
+    } catch (error) {
+      console.error('Delete error:', error)
+      toast({
+        title: 'Error',
+        description: 'Failed to delete job',
+        variant: 'destructive',
+      })
+    }
+  }
+
   return (
     <>
       <TasksMutateDrawer
@@ -44,27 +81,12 @@ export function TasksDialogs() {
                 setCurrentRow(null)
               }, 500)
             }}
-            handleConfirm={() => {
-              setOpen(null)
-              setTimeout(() => {
-                setCurrentRow(null)
-              }, 500)
-              toast({
-                title: 'The following task has been deleted:',
-                description: (
-                  <pre className='mt-2 w-[340px] rounded-md bg-slate-950 p-4'>
-                    <code className='text-white'>
-                      {JSON.stringify(currentRow, null, 2)}
-                    </code>
-                  </pre>
-                ),
-              })
-            }}
+            handleConfirm={handleDelete}
             className='max-w-md'
-            title={`Delete this task: ${currentRow.id} ?`}
+            title={`Delete Job: ${currentRow.id}`}
             desc={
               <>
-                You are about to delete a task with the ID{' '}
+                You are about to delete the job with ID{' '}
                 <strong>{currentRow.id}</strong>. <br />
                 This action cannot be undone.
               </>

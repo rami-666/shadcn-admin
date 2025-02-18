@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { Progress } from '@/components/ui/progress'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { config } from '@/config/env'
 import io from 'socket.io-client'
+import { AlertCircle } from 'lucide-react'
 
 interface EnrichmentProgressProps {
   jobId: string
@@ -11,108 +12,202 @@ interface EnrichmentProgressProps {
   onError?: () => void
 }
 
+interface QueueProgress {
+  processedCount: number
+  totalCompanies: number
+  progress: number
+  skippedCount: number
+  failedCount: number
+}
+
+type QueueProgressMap = {
+  'url-validation-queue': QueueProgress
+  'web-scraping-queue': QueueProgress
+  'vms-check-queue': QueueProgress
+  'report-generation-queue': QueueProgress
+}
+
 export function EnrichmentProgress({ jobId, onComplete, onError }: EnrichmentProgressProps) {
-  const [progress, setProgress] = useState(0)
+  const [queueProgress, setQueueProgress] = useState<QueueProgressMap>({
+    'url-validation-queue': { processedCount: 0, totalCompanies: 0, progress: 0, skippedCount: 0, failedCount: 0 },
+    'web-scraping-queue': { processedCount: 0, totalCompanies: 0, progress: 0, skippedCount: 0, failedCount: 0 },
+    'vms-check-queue': { processedCount: 0, totalCompanies: 0, progress: 0, skippedCount: 0, failedCount: 0 },
+    'report-generation-queue': { processedCount: 0, totalCompanies: 0, progress: 0, skippedCount: 0, failedCount: 0 }
+  })
   const [currentQueue, setCurrentQueue] = useState('')
   const [status, setStatus] = useState<'waiting' | 'processing' | 'completed' | 'failed'>('waiting')
+  const [socketConnected, setSocketConnected] = useState(false)
+  const socketRef = useRef<any>(null)
 
   useEffect(() => {
-    const socket = io(config.apiBaseUrl, {
-      reconnection: true,
-      reconnectionAttempts: 5,
-      reconnectionDelay: 1000,
-    })
+    try {
+      if (!socketRef.current) {
+        socketRef.current = io(`${config.apiBaseUrl}`)
+        console.log("Attempting socket connection to:", config.apiBaseUrl)
+      }
 
-    console.log("Socket connecting to:", config.apiBaseUrl)
+      const socket = socketRef.current
 
-    socket.on('connect', () => {
-      console.log("Socket connected successfully")
-    })
+      socket.on('connect', () => {
+        console.log("Socket connected successfully")
+        setSocketConnected(true)
+        socket.emit('join', `${jobId}`)
+        console.log("Joined room:", `job:${jobId}`)
+      })
 
-    socket.on('connect_error', (error) => {
+      socket.on('connect_error', (error: Error) => {
+        console.error("Socket connection error:", error)
+        setSocketConnected(false)
+      })
+
+      socket.on('pipeline_progress', (data: { 
+        queueName: keyof QueueProgressMap, 
+        processedCount: number, 
+        totalCompanies: number,
+        skippedCount?: number
+      }) => {
+        console.log("[Debug] Raw pipeline_progress event received:", data)
+
+        if (!data || typeof data !== 'object') {
+          console.error("Invalid pipeline_progress data received:", data)
+          return
+        }
+
+        const { queueName, processedCount, totalCompanies, skippedCount = 0 } = data
+        
+        if (!queueName || processedCount === undefined || !totalCompanies) {
+          console.error("Missing required data in pipeline_progress event")
+          return
+        }
+
+        setQueueProgress(prev => {
+          // Calculate total skipped and failed companies across all queues
+          const totalSkippedCompanies = Object.values(prev).reduce((total, queue) => total + queue.skippedCount, 0) + skippedCount - (prev[queueName].skippedCount || 0)
+          const totalFailedCompanies = Object.values(prev).reduce((total, queue) => total + queue.failedCount, 0)
+          const effectiveTotalCompanies = totalCompanies - totalSkippedCompanies - totalFailedCompanies
+
+          // If no companies left to process, set all queues to 100% and status to failed
+          if (effectiveTotalCompanies <= 0) {
+            const completedState = Object.fromEntries(
+              Object.entries(prev).map(([key, value]) => [
+                key,
+                {
+                  ...value,
+                  progress: 100,
+                  skippedCount: key === queueName ? skippedCount : value.skippedCount,
+                  failedCount: value.failedCount
+                }
+              ])
+            ) as QueueProgressMap
+            setStatus('failed')
+            onError?.()
+            return completedState
+          }
+
+          const newState = {
+            ...prev,
+            [queueName]: {
+              ...prev[queueName],
+              processedCount,
+              totalCompanies,
+              progress: Math.min(Math.floor((processedCount / effectiveTotalCompanies) * 100), 100),
+              skippedCount,
+              failedCount: prev[queueName].failedCount
+            }
+          }
+
+          // If VMS check queue reaches 100%, set status to completed
+          if (queueName === 'vms-check-queue' && 
+              Math.min(Math.floor((processedCount / effectiveTotalCompanies) * 100), 100) === 100) {
+            setStatus('completed')
+            onComplete?.()
+          }
+
+          return newState
+        })
+        
+        setCurrentQueue(queueName)
+        if (status !== 'completed' && status !== 'failed') {
+          setStatus('processing')
+        }
+      })
+
+      socket.on('pipeline_job_failed', (data: { 
+        jobId: string,
+        queueName: keyof QueueProgressMap,
+        error: string,
+        processedCount: number,
+        totalCompanies: number
+      }) => {
+        console.error("Job failed:", data.error)
+        
+        setQueueProgress(prev => {
+          const totalSkippedCompanies = Object.values(prev).reduce((total, queue) => total + queue.skippedCount, 0)
+          const totalFailedCompanies = Object.values(prev).reduce((total, queue) => total + queue.failedCount, 0) + 1
+          const effectiveTotalCompanies = data.totalCompanies - totalSkippedCompanies - totalFailedCompanies
+
+          // If no companies left to process, set all queues to 100% and status to failed
+          if (effectiveTotalCompanies <= 0) {
+            const completedState = Object.fromEntries(
+              Object.entries(prev).map(([key, value]) => [
+                key,
+                {
+                  ...value,
+                  progress: 100,
+                  failedCount: key === data.queueName ? value.failedCount + 1 : value.failedCount,
+                  skippedCount: value.skippedCount,
+                  processedCount: data.processedCount,
+                  totalCompanies: data.totalCompanies
+                }
+              ])
+            ) as QueueProgressMap
+            setStatus('failed')
+            onError?.()
+            return completedState
+          }
+
+          return {
+            ...prev,
+            [data.queueName]: {
+              ...prev[data.queueName],
+              processedCount: data.processedCount,
+              totalCompanies: data.totalCompanies,
+              progress: Math.min(Math.floor((data.processedCount / effectiveTotalCompanies) * 100), 100),
+              failedCount: prev[data.queueName].failedCount + 1,
+              skippedCount: prev[data.queueName].skippedCount
+            }
+          }
+        })
+
+        if (status !== 'completed') {
+          setStatus('failed')
+          onError?.()
+        }
+      })
+
+      socket.on('disconnect', (reason: string) => {
+        console.log("Socket disconnected:", reason)
+        setSocketConnected(false)
+      })
+
+    } catch (error) {
       console.error("Socket connection error:", error)
-    })
-
-    // Join the job's room
-    socket.emit('join', `job:${jobId}`)
-    console.log("Joined room:", `job:${jobId}`)
-
-    // Queue weights (each step's contribution to total progress)
-    const queueWeights = {
-      'url-validation-queue': 0.2,     // 20%
-      'web-scraping-queue': 0.3,       // 30%
-      'vms-check-queue': 0.3,          // 30%
-      'report-generation-queue': 0.2    // 20%
     }
 
-    // Listen for progress updates
-    socket.on('pipeline_progress', (data: { 
-      queueName: keyof typeof queueWeights, 
-      processedCount: number, 
-      totalCompanies: number 
-    }) => {
-      console.log("Received progress update:", {
-        queue: data.queueName,
-        processed: data.processedCount,
-        total: data.totalCompanies
-      })
-
-      const { queueName, processedCount, totalCompanies } = data
-      const queueProgress = (processedCount / totalCompanies) * 100
-      const weightedProgress = queueProgress * queueWeights[queueName]
-      
-      // Add base progress from completed queues
-      let baseProgress = 0
-      if (queueName === 'web-scraping-queue') baseProgress = 20
-      if (queueName === 'vms-check-queue') baseProgress = 50
-      if (queueName === 'report-generation-queue') baseProgress = 80
-
-      const totalProgress = Math.floor(baseProgress + weightedProgress)
-      console.log("Calculated progress:", {
-        queueProgress,
-        weightedProgress,
-        baseProgress,
-        totalProgress
-      })
-
-      setProgress(totalProgress)
-      setCurrentQueue(queueName)
-      setStatus('processing')
-    })
-
-    // Handle job completion
-    socket.on('pipeline_job_completed', () => {
-      console.log("Job completed successfully")
-      setProgress(100)
-      setStatus('completed')
-      onComplete?.()
-    })
-
-    // Handle job failure
-    socket.on('pipeline_job_failed', (error) => {
-      console.error("Job failed:", error)
-      setStatus('failed')
-      onError?.()
-    })
-
-    // Handle disconnection
-    socket.on('disconnect', (reason) => {
-      console.log("Socket disconnected:", reason)
-    })
-
-    // Cleanup
     return () => {
-      console.log("Cleaning up socket connection")
-      socket.off('connect')
-      socket.off('connect_error')
-      socket.off('pipeline_progress')
-      socket.off('pipeline_job_completed')
-      socket.off('pipeline_job_failed')
-      socket.off('disconnect')
-      socket.emit('leave', `job:${jobId}`)
-      socket.disconnect()
+      if (socketRef.current) {
+        console.log("Cleaning up socket connection")
+        const socket = socketRef.current
+        socket.emit('leave', `job:${jobId}`)
+        socket.disconnect()
+        socketRef.current = null
+      }
     }
   }, [jobId, onComplete, onError])
+
+  useEffect(() => {
+    console.log("Socket connected:", socketConnected)
+  }, [socketConnected])
 
   const getQueueDisplay = (queue: string) => {
     switch (queue) {
@@ -142,6 +237,13 @@ export function EnrichmentProgress({ jobId, onComplete, onError }: EnrichmentPro
     }
   }
 
+  const queueOrder: (keyof QueueProgressMap)[] = [
+    'url-validation-queue',
+    'web-scraping-queue',
+    'report-generation-queue',
+    'vms-check-queue'
+  ]
+
   return (
     <Card>
       <CardHeader className="pb-4">
@@ -153,12 +255,30 @@ export function EnrichmentProgress({ jobId, onComplete, onError }: EnrichmentPro
         </div>
       </CardHeader>
       <CardContent>
-        <div className="space-y-2">
-          <Progress value={progress} className="h-2" />
-          <div className="flex justify-between text-xs text-muted-foreground">
-            <span>{currentQueue ? getQueueDisplay(currentQueue) : 'Starting...'}</span>
-            <span>{progress}%</span>
-          </div>
+        <div className="space-y-4">
+          {queueOrder.map((queue) => (
+            <div key={queue} className="space-y-2">
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>{getQueueDisplay(queue)}</span>
+                <span>{queueProgress[queue].progress}%</span>
+              </div>
+              <Progress value={queueProgress[queue].progress} className="h-2" />
+              <div className="flex flex-col gap-1">
+                {queueProgress[queue].skippedCount > 0 && (
+                  <div className="flex items-center gap-1 text-xs text-yellow-500">
+                    <AlertCircle className="h-3 w-3" />
+                    <span>{queueProgress[queue].skippedCount} companies skipped</span>
+                  </div>
+                )}
+                {queueProgress[queue].failedCount > 0 && (
+                  <div className="flex items-center gap-1 text-xs text-destructive">
+                    <AlertCircle className="h-3 w-3" />
+                    <span>{queueProgress[queue].failedCount} companies failed</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
         </div>
       </CardContent>
     </Card>

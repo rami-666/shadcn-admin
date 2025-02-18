@@ -82,8 +82,8 @@ export default function CompaniesPage() {
       title: "Success",
       description: "Companies enrichment process completed successfully",
     })
-    setShowProgress(false)
-    setEnrichmentJobId(undefined)
+    // setShowProgress(false)
+    // setEnrichmentJobId(undefined)
     refetch()
   }
 
@@ -93,8 +93,8 @@ export default function CompaniesPage() {
       description: "Companies enrichment process failed",
       variant: "destructive",
     })
-    setShowProgress(false)
-    setEnrichmentJobId(undefined)
+    // setShowProgress(false)
+    // setEnrichmentJobId(undefined)
   }
 
   if (isLoading) {
@@ -119,7 +119,7 @@ export default function CompaniesPage() {
             onClick={handleEnrichCompanies}
             disabled={enrichMutation.isPending || Object.keys(rowSelection).length === 0}
           >
-            {enrichMutation.isPending ? "Processing..." : "Enrich Companies"}
+            {enrichMutation.isPending ? "Processing..." : "VMS Check"}
           </Button>
         </div>
 

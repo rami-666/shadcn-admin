@@ -34,7 +34,7 @@ export function EnrichmentProgress({ jobId, onComplete, onError }: EnrichmentPro
     'vms-check-queue': { processedCount: 0, totalCompanies: 0, progress: 0, skippedCount: 0, failedCount: 0 },
     'report-generation-queue': { processedCount: 0, totalCompanies: 0, progress: 0, skippedCount: 0, failedCount: 0 }
   })
-  const [currentQueue, setCurrentQueue] = useState('')
+  const [, setCurrentQueue] = useState('')
   const [status, setStatus] = useState<'waiting' | 'processing' | 'completed' | 'failed'>('waiting')
   const [socketConnected, setSocketConnected] = useState(false)
   const socketRef = useRef<any>(null)

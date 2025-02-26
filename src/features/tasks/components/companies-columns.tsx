@@ -2,7 +2,7 @@ import { ColumnDef } from '@tanstack/react-table'
 import { Company } from '../data/companies-schema'
 import { DataTableColumnHeader } from './data-table-column-header'
 import { DotsHorizontalIcon } from '@radix-ui/react-icons'
-import { IconTrash, IconDownload } from '@tabler/icons-react'
+import { IconTrash, IconDownload, IconEye } from '@tabler/icons-react'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
@@ -16,6 +16,16 @@ import {
 import { useCompanies } from '../context/companies-context'
 import { Badge } from '@/components/ui/badge'
 import { config } from '@/config/env'
+import { useState } from 'react'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import ReactMarkdown from 'react-markdown'
 
 export const companiesColumns: ColumnDef<Company>[] = [
   {
@@ -95,12 +105,59 @@ export const companiesColumns: ColumnDef<Company>[] = [
     ),
     cell: ({ row }) => {
       const value = row.getValue('report_ready') as boolean | null
+      const [isOpen, setIsOpen] = useState(false)
+      const [report, setReport] = useState<{ name: string; domain: string; report: string } | null>(null)
+      const [isLoading, setIsLoading] = useState(false)
+
+      const handleViewReport = async () => {
+        setIsLoading(true)
+        try {
+          const response = await fetch(`${config.apiBaseUrl}/api/jobs/company/${row.original.id}/report-content`)
+          const data = await response.json()
+          if (data.success) {
+            setReport(data.company)
+            setIsOpen(true)
+          }
+        } catch (error) {
+          console.error('Failed to fetch report:', error)
+        } finally {
+          setIsLoading(false)
+        }
+      }
+
       return (
         <div className='w-[100px]'>
           {value === null ? (
             <Badge variant="outline">Unknown</Badge>
           ) : value ? (
-            <Badge variant="default">Yes</Badge>
+            <>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={handleViewReport}
+                disabled={isLoading}
+              >
+                <IconEye className="h-4 w-4 mr-1" />
+                View
+              </Button>
+              <Dialog open={isOpen} onOpenChange={setIsOpen}>
+                <DialogContent className="max-w-3xl max-h-[80vh]">
+                  <DialogHeader>
+                    <DialogTitle>Company Report</DialogTitle>
+                    <DialogDescription>
+                      Report for {report?.name} ({report?.domain})
+                    </DialogDescription>
+                  </DialogHeader>
+                  <ScrollArea className="mt-4 h-full max-h-[60vh] w-full rounded-md border p-4">
+                    {report?.report && (
+                      <ReactMarkdown className="prose dark:prose-invert">
+                        {report.report}
+                      </ReactMarkdown>
+                    )}
+                  </ScrollArea>
+                </DialogContent>
+              </Dialog>
+            </>
           ) : (
             <Badge variant="secondary">No</Badge>
           )}

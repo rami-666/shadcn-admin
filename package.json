@@ -49,6 +49,7 @@
     "react-day-picker": "8.10.1",
     "react-dom": "^19.0.0",
     "react-hook-form": "^7.54.0",
+    "react-markdown": "^9.0.3",
     "recharts": "^2.14.1",
     "socket.io-client": "^4.8.1",
     "sonner": "^1.7.2",
@@ -60,6 +61,7 @@
   "devDependencies": {
     "@eslint/js": "^9.16.0",
     "@faker-js/faker": "^9.3.0",
+    "@tailwindcss/typography": "^0.5.16",
     "@tanstack/eslint-plugin-query": "^5.62.1",
     "@tanstack/react-query-devtools": "^5.62.3",
     "@tanstack/router-devtools": "^1.86.1",

@@ -91,4 +91,9 @@ export const tags = [
     label: 'Search Index',
     icon: IconSearch,
   },
+  {
+    value: 'vms_check',
+    label: 'VMS Check',
+    icon: IconBuildingSkyscraper,
+  },
 ]

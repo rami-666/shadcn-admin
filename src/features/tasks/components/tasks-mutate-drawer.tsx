@@ -59,7 +59,7 @@ export function TasksMutateDrawer({ open, onOpenChange }: Props) {
   const form = useForm<TasksForm>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      jobType: 'name-to-domain',
+      jobType: 'company_lookup',
       name: '',
     },
   })
@@ -140,17 +140,46 @@ export function TasksMutateDrawer({ open, onOpenChange }: Props) {
       const reader = new FileReader()
       reader.onload = async (e) => {
         const text = e.target?.result as string
-        // Parse CSV content and extract company names
+        // Split CSV into lines and remove empty lines
         const lines = text.split('\n')
-        // Remove header and empty lines, and trim whitespace
-        const companyNames = lines
-          .slice(1) // Skip the header row
           .map(line => line.trim())
-          .filter(line => line.length > 0) // Remove empty lines
+          .filter(line => line.length > 0)
+        
+        // Remove header row
+        const dataLines = lines.slice(1)
+        
+        let companies
+        if (data.jobType === 'vms_check') {
+          try {
+            companies = dataLines.map(line => {
+              const [name, domain] = line.split(',').map(field => field.trim())
+              if (!name || !domain) {
+                throw new Error('Invalid CSV format: Each row must contain both company name and domain')
+              }
+              return {
+                name,
+                domain
+              }
+            })
+          } catch (error) {
+            toast({
+              title: 'Error',
+              description: error instanceof Error ? error.message : 'Invalid CSV format',
+              variant: 'destructive',
+            })
+            return
+          }
+        } else {
+          // For company_lookup, only process the first column (company name)
+          companies = dataLines.map(line => ({
+            name: line.split(',')[0].trim(), // Only take the first column
+            domain: null
+          }))
+        }
 
-        console.log('Company names:', companyNames)
+        console.log('Companies:', companies)
         console.log('Job type:', data.jobType)
-        console.log('Number of companies:', companyNames.length)
+        console.log('Number of companies:', companies.length)
 
         // Make POST request to API
         try {
@@ -160,7 +189,8 @@ export function TasksMutateDrawer({ open, onOpenChange }: Props) {
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              companies: companyNames,
+              companies,
+              jobType: data.jobType,
               name: data.name
             }),
           })
@@ -188,8 +218,8 @@ export function TasksMutateDrawer({ open, onOpenChange }: Props) {
                     {
                       fileName: data.csvFile.name,
                       jobType: data.jobType,
-                      numberOfCompanies: companyNames.length,
-                      companies: companyNames.slice(0, 3), // Show first 3 companies in toast
+                      numberOfCompanies: companies.length,
+                      companies: companies.slice(0, 3), // Show first 3 companies in toast
                       jobId: result.jobId
                     },
                     null,
@@ -270,7 +300,8 @@ export function TasksMutateDrawer({ open, onOpenChange }: Props) {
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value="name-to-domain">Name to Domain</SelectItem>
+                      <SelectItem value="company_lookup">Company Lookup</SelectItem>
+                      <SelectItem value="vms_check">VMS Check</SelectItem>
                     </SelectContent>
                   </Select>
                   <FormMessage />

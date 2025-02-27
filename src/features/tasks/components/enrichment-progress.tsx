@@ -27,17 +27,38 @@ type QueueProgressMap = {
   'report-generation-queue': QueueProgress
 }
 
+const initialQueueProgress: QueueProgressMap = {
+  'url-validation-queue': { processedCount: 0, totalCompanies: 0, progress: 0, skippedCount: 0, failedCount: 0 },
+  'web-scraping-queue': { processedCount: 0, totalCompanies: 0, progress: 0, skippedCount: 0, failedCount: 0 },
+  'vms-check-queue': { processedCount: 0, totalCompanies: 0, progress: 0, skippedCount: 0, failedCount: 0 },
+  'report-generation-queue': { processedCount: 0, totalCompanies: 0, progress: 0, skippedCount: 0, failedCount: 0 }
+}
+
 export function EnrichmentProgress({ jobId, onComplete, onError }: EnrichmentProgressProps) {
-  const [queueProgress, setQueueProgress] = useState<QueueProgressMap>({
-    'url-validation-queue': { processedCount: 0, totalCompanies: 0, progress: 0, skippedCount: 0, failedCount: 0 },
-    'web-scraping-queue': { processedCount: 0, totalCompanies: 0, progress: 0, skippedCount: 0, failedCount: 0 },
-    'vms-check-queue': { processedCount: 0, totalCompanies: 0, progress: 0, skippedCount: 0, failedCount: 0 },
-    'report-generation-queue': { processedCount: 0, totalCompanies: 0, progress: 0, skippedCount: 0, failedCount: 0 }
-  })
+  const [queueProgress, setQueueProgress] = useState<QueueProgressMap>(initialQueueProgress)
   const [, setCurrentQueue] = useState('')
   const [status, setStatus] = useState<'waiting' | 'processing' | 'completed' | 'failed'>('waiting')
   const [socketConnected, setSocketConnected] = useState(false)
   const socketRef = useRef<any>(null)
+
+  // Reset states when jobId changes
+  useEffect(() => {
+    // Clean up existing socket connection
+    if (socketRef.current) {
+      const socket = socketRef.current
+      socket.emit('leave', `job:${jobId}`)
+      socket.disconnect()
+      socketRef.current = null
+    }
+
+    // Reset all progress states
+    setQueueProgress(initialQueueProgress)
+    setCurrentQueue('')
+    setStatus('waiting')
+    setSocketConnected(false)
+    
+    // The socket connection will be re-established in the next useEffect
+  }, [jobId])
 
   useEffect(() => {
     try {
@@ -127,6 +148,7 @@ export function EnrichmentProgress({ jobId, onComplete, onError }: EnrichmentPro
         })
         
         setCurrentQueue(queueName)
+
         if (status !== 'completed' && status !== 'failed') {
           setStatus('processing')
         }
@@ -203,7 +225,7 @@ export function EnrichmentProgress({ jobId, onComplete, onError }: EnrichmentPro
         socketRef.current = null
       }
     }
-  }, [jobId, onComplete, onError])
+  }, [jobId, onComplete, onError, status])
 
   useEffect(() => {
     console.log("Socket connected:", socketConnected)

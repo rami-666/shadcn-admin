@@ -74,6 +74,9 @@ export default function CompaniesPage() {
       return
     }
 
+    setShowProgress(false)
+    setEnrichmentJobId(undefined)
+    
     enrichMutation.mutate(selectedCompanies)
   }
 
@@ -82,8 +85,6 @@ export default function CompaniesPage() {
       title: "Success",
       description: "Companies enrichment process completed successfully",
     })
-    // setShowProgress(false)
-    // setEnrichmentJobId(undefined)
     refetch()
   }
 
@@ -93,8 +94,6 @@ export default function CompaniesPage() {
       description: "Companies enrichment process failed",
       variant: "destructive",
     })
-    // setShowProgress(false)
-    // setEnrichmentJobId(undefined)
   }
 
   if (isLoading) {
